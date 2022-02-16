@@ -3,6 +3,8 @@ import React, {useRef,useState,useEffect} from "react";
 import '@tensorflow/tfjs-backend-webgl';
 import * as bodyPix from '@tensorflow-models/body-pix';
 
+import TensorModel from "../utils/TensorModel";
+
 interface UseBackGroundArg{
     width: number;
     height: number;
@@ -34,13 +36,13 @@ const useBackground = ({width,height}: UseBackGroundArg):UseBackGroundRes =>{
     },[]);
     useEffect(()=>{
       videoRef.current!.onloadeddata = (ev=>{
-        loadAndPredict(videoRef.current!,canvasRef.current!);
+        PredictAndDraw(videoRef.current!,canvasRef.current!);
         setIsLoaded(true);
       })
     },[]);
     useEffect(()=>{
       const inter = setInterval(()=>{
-        loadAndPredict(videoRef.current!,canvasRef.current!);
+        PredictAndDraw(videoRef.current!,canvasRef.current!);
       },10);
       return () => clearInterval(inter);
     },[isLoaded]);
@@ -53,20 +55,15 @@ const useBackground = ({width,height}: UseBackGroundArg):UseBackGroundRes =>{
     }
 }
 
-const loadAndPredict = async(video: HTMLVideoElement,canvas: HTMLCanvasElement)=>{
-    const net = await bodyPix.load({
-      architecture: 'MobileNetV1',
-      outputStride: 16,
-      multiplier: 0.75,
-      quantBytes: 2
-    });
-    const segmentation = await net.segmentPerson(video,{
-      flipHorizontal: false,
-      internalResolution: "medium",
-      segmentationThreshold: 0.7
-    });
-    const maskBackground = true;
-    // Convert the segmentation into a mask to darken the background.
+const makeSegment = async (video: HTMLVideoElement,net: bodyPix.BodyPix): Promise<bodyPix.SemanticPersonSegmentation>=>{
+    return (await net.segmentPerson(video,{
+        flipHorizontal: false,
+        internalResolution: "medium",
+        segmentationThreshold: 0.7
+      }));
+}
+
+const drawBackground = (canvas: HTMLCanvasElement,segmentation: bodyPix.SemanticPersonSegmentation,video: HTMLVideoElement)=>{
     const foregroundColor = {r: 0, g: 0, b: 0, a: 0};
     const backgroundColor = {r: 0, g: 0, b: 0, a: 255};
     const backgroundDarkeningMask = bodyPix.toMask(
@@ -76,6 +73,12 @@ const loadAndPredict = async(video: HTMLVideoElement,canvas: HTMLCanvasElement)=
     const maskBlurAmount = 3;
     const flipHorizontal = false;
     bodyPix.drawMask(canvas, video, backgroundDarkeningMask, opacity, maskBlurAmount, flipHorizontal);
-  }
+}
+
+const PredictAndDraw = async(video: HTMLVideoElement,canvas: HTMLCanvasElement)=>{
+    const net = await TensorModel.instance;
+    const segmentation = await makeSegment(video,net);
+    drawBackground(canvas,segmentation,video);    
+}
 
   export default useBackground;
